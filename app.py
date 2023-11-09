@@ -3,17 +3,17 @@ from dotenv import load_dotenv
 from langchain import PromptTemplate, OpenAI, LLMChain
 from langchain.chat_models import ChatOpenAI
 from langchain.chains.conversation.memory import ConversationBufferWindowMemory
-from langchain.tools import DuckDuckGoSearchRun
-from langchain.agents import Tool
-from langchain.tools import BaseTool
-from langchain.agents import initialize_agent
-from langchain.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
+from langchain.tools import BaseTool, DuckDuckGoSearchRun
+from langchain.agents import initialize_agent, AgentType, AgentExecutor, Tool
+from langchain.agents.agent_toolkits.jira.toolkit import JiraToolkit
+from langchain.utilities.jira import JiraAPIWrapper
+from langchain.embeddings import OpenAIEmbeddings
 from langchain.vectorstores import FAISS
-from langchain.chains import RetrievalQA
+from langchain.chains import RetrievalQA, LLMMathChain
+from chainlit.sync import run_sync
 import chainlit as cl
 
 load_dotenv()
-
 
 DB_FAISS_PATH = 'vectorstore/db_faiss'
 
@@ -34,7 +34,6 @@ def set_custom_prompt():
     """
     Prompt template for QA retrieval for each vector stores
     """
-
     prompt = PromptTemplate(template=custom_prompt_template, input_variables=['context', 'question'])
 
     return prompt
@@ -47,10 +46,7 @@ def retrieval_qa_chain(llm, prompt, db):
         return_source_documents=True,
         chain_type_kwargs={'prompt': prompt}
     )
-
     return qa_chain
-
-
 
 #Loading the model
 def load_llm():
@@ -59,16 +55,11 @@ def load_llm():
         temperature=0,
         model_name='gpt-3.5-turbo'
     )
-
     return llm
-
-
 
 #QA Model Function
 def qa_bot():
     embeddings = OpenAIEmbeddings(openai_api_key=os.environ.get("OPENAI_API_KEY"))
-    # embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2",
-    #                                    model_kwargs={'device': 'cpu'})
     db = FAISS.load_local(DB_FAISS_PATH, embeddings)
     llm = ChatOpenAI(
         temperature=0,
@@ -79,60 +70,92 @@ def qa_bot():
 
     return qa
 
-#Output function
-def final_result(query):
-    qa_result = qa_bot()
-    response = qa_result({'query': query})
-    return response
 
+
+jira = JiraAPIWrapper()
+jira_toolkit = JiraToolkit.from_jira_api_wrapper(jira)
 search = DuckDuckGoSearchRun()
-tools = [
-    Tool(
-        name="search",
-        func=search.run,
-        description="useful when you need to answer questions about current events."
-    ),
-    Tool(
-        name="knowledge_retrieval",
-        func=qa_bot(),
-        description="useful when you need to answer questions about issues in AWS."
+llm_math_chain = LLMMathChain.from_llm(llm=load_llm(), verbose=True)
+
+class HumanInputChainlit(BaseTool):
+    """Tool that adds the capability to ask user for input."""
+
+    name = "human"
+    description = (
+        "You can ask a human for guidance when you think you "
+        "got stuck or you are not sure what to do next. "
+        "The input should be a question for the human."
+        "Only use when you need clarification"
     )
-]
+
+    def _run(
+        self,
+        query: str,
+        run_manager=None,
+    ) -> str:
+        """Use the Human input tool."""
+
+        res = run_sync(cl.AskUserMessage(content=query).send())
+        return res["content"]
+
+    async def _arun(
+        self,
+        query: str,
+        run_manager=None,
+    ) -> str:
+        """Use the Human input tool."""
+        res = await cl.AskUserMessage(content=query).send()
+        return res["content"]
 
 
-# agent memory
-memory = ConversationBufferWindowMemory(
-    memory_key='chat_history',
-    k=3,
-    return_messages=True
-)
-# Creating an agent
-conversational_agent = initialize_agent(
-    agent='chat-conversational-react-description',
-    tools=tools,
-    llm=load_llm(),
-    verbose=True,
-    max_iterations=2,
-    early_stopping_method='generate',
-    memory=memory
-)
-
-#Chainlit Code
+##Chainlit code
 @cl.on_chat_start
-async def start():
-    # chain = conversational_agent("I can't login in my AWS account can you help?")
-    msg = cl.Message(content="Starting the bot...")
-    await msg.send()
-    msg.content = "Hi, I'm the InfoAlchemy Bot. What can I help you with?"
-    await msg.update()
+def start():
+    llm = ChatOpenAI(temperature=0, streaming=True)
+    llm1 = OpenAI(temperature=0, streaming=True)
+    jira = JiraAPIWrapper()
+    jira_toolkit = JiraToolkit.from_jira_api_wrapper(jira)
 
-    cl.user_session.set("chain", memory)
+    tools = [
+        Tool(
+            name="Knowledge Retrieval",
+            func=qa_bot(),
+            description="useful when you need to answer questions about AWS."
+        ), HumanInputChainlit()
+    ] + jira_toolkit.get_tools()
+
+
+    memory = ConversationBufferWindowMemory(
+        memory_key='chat_history',
+        k=3,
+        return_messages=True
+    )
+
+    conversational_agent = initialize_agent(
+        agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+        tools=tools,
+        llm=ChatOpenAI(temperature=0, model="gpt-3.5-turbo"),
+        verbose=True,
+        max_iterations=10,
+        early_stopping_method='generate',
+        memory=memory,
+        handle_parsing_errors=True
+    )
+
+    cl.user_session.set("agent", conversational_agent)
+
+
 
 @cl.on_message
 async def main(message: cl.Message):
-    chain = conversational_agent(message)
-    await send_response(chain['output'])
-    return chain['output']
-
-async def send_response(response):
-    await cl.Message(content=response).send()
+    agent = cl.user_session.get("agent")  # type: AgentExecutor
+    prompt = """Context: You are a customer service assistant.
+        Task: You will be asked questions about AWS and you will answer them. You may also be asked to create an issue, and you will guide me on the details the I need to provide: a short description of the issue and priority level(low, medium, high).
+        Short description and priority level must always be provided before creation of issue if not already provided. Ask customer first using HumanInputChain tool before creating an issue.
+        For create issue, always create issues from project Service Desk with the project key of SD. The issue type is 'Submit a request or incident'. Project key is "SD".
+        Make sure to include Project key "SD" when creating an issue.
+        Input:"""
+    res = await agent.run(prompt +
+        message
+    )
+    await cl.Message(content=res).send()

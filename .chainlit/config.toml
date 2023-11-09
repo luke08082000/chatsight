@@ -9,7 +9,7 @@ user_env = []
 session_timeout = 3600
 
 # Enable third parties caching (e.g LangChain cache)
-cache = false
+cache = true
 
 # Follow symlink for asset mount (see https://github.com/Chainlit/chainlit/issues/317)
 # follow_symlink = false
@@ -23,7 +23,7 @@ prompt_playground = true
 name = "SPACT"
 
 # Description of the app and chatbot. This is used for HTML tags.
-# description = "Isang malupet na chatbot"
+# description = ""
 
 # Large size content are by default collapsed for a cleaner ui
 default_collapse_content = true
@@ -32,7 +32,7 @@ default_collapse_content = true
 default_expand_messages = false
 
 # Hide the chain of thought details from the user in the UI.
-hide_cot = true
+hide_cot = false
 
 # Link to your github repo. This will add a github button in the UI's header.
 # github = ""
