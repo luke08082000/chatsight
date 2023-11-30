@@ -2,5 +2,7 @@ chainlit
 langchain
 openai
 jira
-
-
+boto3
+atlassian-python-api
+faiss-cpu
+tiktoken

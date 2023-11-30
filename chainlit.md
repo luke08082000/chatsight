@@ -1,15 +1,16 @@
-### InfoAlchemy
-## Virtual Customer Service Assistant
+ **InfoAlchemy Virtual Customer Service Assistant**
 
-🤖 Hello! I'm Spact, your trusted support assistant, here to make your experience as smooth as possible. Whether you have questions, need assistance, or want to report an issue, I'm at your service 24/7.
+🤖 Hello! I'm Spact, your dedicated support assistant, ready to enhance your experience. Whether you have questions, need assistance, or want to report an issue, I'm here 24/7 to help you.
 
-## What I Can Do:
+**What I Can Do**:
 
-🔍 **Knowledge Retrieval**: I can provide you with information, solutions, and helpful tips on a wide range of topics. Just ask, and I'll do my best to assist you.
+🔍 **Knowledge Retrieval**: Seek information, solutions, and tips on various topics in AWS. Just ask, and I'll provide the assistance you need.
 
-📝 **Ticket Creation**: If you have a specific issue that needs our team's attention, I can help you create a support ticket efficiently and accurately.
+📝 **Ticket Creation**: Efficiently create support tickets for specific issues that require our team's attention.
 
-## How to Get Started:
+🔧 **Self-Healing**: Capable of automated troubleshooting using CPU utilization retrieval, Cloudwatch alarms retrieval, and CPU reboot.
 
-You can ask questions or describe your concern on the chatbox below and I will try my best to help you.
+**How to Get Started**:
+
+Simply type your questions or describe your concerns in the chatbox below, and I'll do my best to assist you.
 
