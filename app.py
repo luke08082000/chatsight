@@ -532,7 +532,8 @@ def start():
     cl.user_session.set("agent", agent)
 ########## AGENT INITIALIZATION (END) ########## 
 
-@cl.on_message
+@cl.on_message #chainlit decorator 
+# see chainlit docs: https://docs.chainlit.io/api-reference/lifecycle-hooks/on-message
 async def main(message: cl.Message):
     agent = cl.user_session.get("agent")  # type: AgentExecutor
     res = await agent.arun(
