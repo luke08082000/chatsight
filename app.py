@@ -20,6 +20,9 @@ load_dotenv()
 
 DB_FAISS_PATH = 'vectorstore/db_faiss'
 
+##########  KNOWLEDGE RETRIEVAL TOOL (RAG) COMPONENT (START) ##########
+# SEE LANGCHAIN'S RAG DOCUMENTATION: https://python.langchain.com/v0.2/docs/tutorials/rag/#retrieval-and-generation
+# this component is called on by the agent as one of its tools
 custom_prompt_template = """You are a customer service assistant. 
 Use the following pieces of information to answer the user's question.
 If you don't know the answer, just say that you don't know the answer, don't try to make up 
@@ -72,11 +75,16 @@ def qa_bot():
     qa = retrieval_qa_chain(llm, qa_prompt, db)
 
     return qa
+########## KNOWLEDGE RETRIEVAL TOOL (RAG) COMPONENT (END) ##########
 
 
 
-
-
+##########  HUMAN-INPUT TOOL (START) ##########
+# CHAINLIT DOCUMENTATION: https://docs.chainlit.io/advanced-features/ask-user
+# This section defines the HumanInputChainlit class, which is a tool used by the agent
+# that allows the agent to ask the user for input when necessary.
+# It is used to ask for clarifications, request permissions, and gather 
+# important information such as an EC2 instance ID.
 class HumanInputChainlit(BaseTool):
     """Tool that adds the capability to ask user for input."""
 
@@ -106,7 +114,13 @@ class HumanInputChainlit(BaseTool):
         """Use the Human input tool."""
         res = await cl.AskUserMessage(content=query).send()
         return res["content"]
+########## HUMAN-INPUT TOOL (SEE CHAINLIT DOCUMENTATION) (END) ##########
 
+
+########## JIRA TOOL KIT (START) ########## 
+# collection of jira tools used by the agent
+# creates or updates issue
+# SEE LANGCHAIN DOCUMENTATION OF JIRATOOLKIT: https://python.langchain.com/v0.2/docs/integrations/tools/jira/#related
 class JiraToolkit(BaseToolkit):
     """Jira Toolkit."""
 
@@ -156,10 +170,15 @@ class JiraToolkit(BaseToolkit):
     def get_tools(self) -> List[BaseTool]:
         """Get the tools in the toolkit."""
         return self.tools
+########## JIRA TOOL KIT (END) ########## 
+
+
+
+########## AWS SCRIPTS FOR EC2 (START) ##########
+# each script can be called on by the agent as a tool
 
 #Self-healing - reboot ec2 instance 
 import time
-
 def reboot_ec2_instance(instance_id):
     ec2 = boto3.client('ec2', region_name="ap-southeast-1")
     
@@ -198,7 +217,6 @@ def check_instance_status(instance_ids):
     
 #Get CPU util
 from datetime import datetime, timedelta
-
 def get_ec2_cpu_utilization(instance_id, duration_minutes=60):
     # Create CloudWatch client
     cloudwatch = boto3.client('cloudwatch', region_name='ap-southeast-1')
@@ -382,10 +400,19 @@ def get_cloudwatch_alarms(instance_id):
             print("----")
     else:
         print("No alarms found for the specified EC2 instance.")
+########## AWS SCRIPTS (END) ##########
 
-##Chainlit code
-@cl.on_chat_start
+
+# see chainlit docs: https://docs.chainlit.io/integrations/langchain
+########## AGENT INITIALIZATION (START) ########## 
+# see langchain agent doc: https://python.langchain.com/v0.1/docs/modules/agents/
+# an agent is a farmework where a language model is used as a decision maker 
+# to reason through a problem and solve it using a set of 'tools'
+# these 'tools' are basically functions that help it interact
+# with external environments such as JIRA and AWS or any other 3rd party APIs
+@cl.on_chat_start #CHAINLIT DECORATOR#
 def start():
+    ########## TOOLS INITIALIZATION (START) ##########
     jira = JiraAPIWrapper()
     jira_toolkit = JiraToolkit.from_jira_api_wrapper(jira)
 
@@ -450,13 +477,13 @@ def start():
         ),
         HumanInputChainlit()
     ] + jira_toolkit.get_tools()
-
+    ########## TOOLS INITIALIZATION (END) ##########
 
     memory = ConversationBufferMemory(
         memory_key='history',
         return_messages=True
     )
-
+    # AGENT PROMPT #
     PREFIX = """"You are a customer service assistant. Answer questions politely.
     Be transparent. Always say your observations using the troubleshooting tools so that the customer knows what's happening.
     Ask the customer if they would like to have a ticket created for them before creating one.
@@ -486,6 +513,7 @@ def start():
     Question: {input}
     Thought:{agent_scratchpad}"""
 
+    
     agent = initialize_agent(
         agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
         tools=tools,
@@ -502,8 +530,7 @@ def start():
     }
     )
     cl.user_session.set("agent", agent)
-
-
+########## AGENT INITIALIZATION (END) ########## 
 
 @cl.on_message
 async def main(message: cl.Message):
